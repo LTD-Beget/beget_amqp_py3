@@ -1,0 +1,4 @@
+pika
+redis
+filelock
+-e git://github.com/LTD-Beget/setproctitle.git#egg=setproctitle
