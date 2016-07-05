@@ -39,6 +39,7 @@ class Service(object):
                  logger_name=None,
                  no_ack=False,
                  max_la=0,
+                 inactivity_timeout=60,
                  redis_host='localhost',
                  redis_port=6379):
         """
@@ -97,6 +98,7 @@ class Service(object):
         self.durable = durable
         self.auto_delete = auto_delete
         self.no_ack = no_ack
+        self.inactivity_timeout = inactivity_timeout
         self.redis_host = redis_host
         self.redis_port = redis_port
 
@@ -162,6 +164,7 @@ class Service(object):
                                     uid=uid,
                                     sender=self.sender,
                                     max_la=self.max_la,
+                                    inactivity_timeout=self.inactivity_timeout,
                                     redis_host=self.redis_host,
                                     redis_port=self.redis_port)
                 worker.start()

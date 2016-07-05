@@ -51,6 +51,7 @@ class AmqpWorker(Process):
                  uid='',
                  sender=None,
                  max_la=0,
+                 inactivity_timeout=60,
                  redis_host='localhost',
                  redis_port=6379):
         Process.__init__(self)
@@ -73,6 +74,7 @@ class AmqpWorker(Process):
         self.uid = uid
         self.sender = sender
         self.max_la = max_la
+        self.inactivity_timeout = inactivity_timeout
         self.redis_host = redis_host
         self.redis_port = redis_port
 
@@ -144,7 +146,8 @@ class AmqpWorker(Process):
                                             self.durable,
                                             self.auto_delete,
                                             self.no_ack,
-                                            self.prefetch_count)
+                                            self.prefetch_count,
+                                            self.inactivity_timeout)
             self.amqp_listener.start()
         except Exception as e:
             self.error('Exception: %s\n'

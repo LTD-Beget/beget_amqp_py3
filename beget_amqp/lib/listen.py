@@ -26,7 +26,8 @@ class AmqpListen:
                  durable=True,
                  auto_delete=True,
                  no_ack=False,
-                 prefetch_count=1):
+                 prefetch_count=1,
+                 inactivity_timeout=60):
 
         self.logger = Logger.get_logger()
 
@@ -42,6 +43,7 @@ class AmqpListen:
         self.auto_delete = auto_delete
         self.no_ack = no_ack
         self.prefetch_count = prefetch_count
+        self.inactivity_timeout = inactivity_timeout
 
         self.consumer_storage = consumer_storage
 
@@ -88,10 +90,14 @@ class AmqpListen:
             if not self.consumer_storage.consumer_is_allowed():
                 continue
 
-            for method_frame, properties, body in self.channel.consume(queue=self.queue, no_ack=self.no_ack):
-                self.channel.cancel()
-                self.callback(self.channel, method_frame, properties, body)
-                break
+            try:
+                for method_frame, properties, body in self.channel.consume(queue=self.queue, no_ack=self.no_ack,
+                                                                           inactivity_timeout=self.inactivity_timeout):
+                    self.channel.cancel()
+                    self.callback(self.channel, method_frame, properties, body)
+                    break
+            except TypeError:
+                continue
 
     def stop(self):
         """
