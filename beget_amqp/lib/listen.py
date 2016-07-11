@@ -71,33 +71,33 @@ class AmqpListen:
         credentials = pika.PlainCredentials(self.user, self.password)
         connect_params = pika.ConnectionParameters(self.host, self.port, self.virtual_host, credentials)
 
-        self.connection = pika.BlockingConnection(connect_params)
-        self.channel = self.connection.channel()
-        """:type : BlockingChannel"""
-
         try:
-            self.channel.queue_declare(queue=self.queue, passive=True)
-        except pika.exceptions.ChannelClosed:
-            self.logger.debug('AmqpListen: queue is not create. Process to create her.')
+            self.connection = pika.BlockingConnection(connect_params)
             self.channel = self.connection.channel()
             """:type : BlockingChannel"""
-            self.channel.queue_declare(queue=self.queue, durable=self.durable, auto_delete=self.auto_delete)
-
-        self.channel.basic_qos(prefetch_count=1)
-
-        while self.work_status == self.WORK_RUNNING:
-            self.connection.sleep(0.1)
-            if not self.consumer_storage.consumer_is_allowed():
-                continue
 
             try:
+                self.channel.queue_declare(queue=self.queue, passive=True)
+            except pika.exceptions.ChannelClosed:
+                self.logger.debug('AmqpListen: queue is not create. Process to create her.')
+                self.channel = self.connection.channel()
+                """:type : BlockingChannel"""
+                self.channel.queue_declare(queue=self.queue, durable=self.durable, auto_delete=self.auto_delete)
+
+            self.channel.basic_qos(prefetch_count=1)
+
+            while self.work_status == self.WORK_RUNNING:
+                self.connection.sleep(0.1)
+                if not self.consumer_storage.consumer_is_allowed():
+                    continue
+
                 for method_frame, properties, body in self.channel.consume(queue=self.queue, no_ack=self.no_ack,
                                                                            inactivity_timeout=self.inactivity_timeout):
                     self.channel.cancel()
                     self.callback(self.channel, method_frame, properties, body)
                     break
-            except TypeError:
-                continue
+        except TypeError:
+            self.logger.debug("AmqpListen: inactivity timeout")
 
     def stop(self):
         """
