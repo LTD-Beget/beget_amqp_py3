@@ -107,7 +107,7 @@ class AmqpWorker(Process):
         worker_lock = filelock.FileLock(AmqpWorker.get_worker_lockfile(worker_id))
 
         try:
-            worker_lock.acquire(timeout=0.1)
+            worker_lock.acquire(timeout=0)
             return False
         except filelock.Timeout:
             return True
@@ -185,6 +185,7 @@ class AmqpWorker(Process):
 
         # Проверяем в локальном хранилище, что это не дублирующая заявка
         if self.message_storage.is_duplicate_message(message_amqp):
+            self.debug('Message is done: {}'.format(message_amqp))
             if self.message_storage.is_done_message(message_amqp):
                 self.consumer_storage.consumer_release()
                 self.sync_manager.remove_unacknowledged_message_id(message_amqp.id)
@@ -193,9 +194,12 @@ class AmqpWorker(Process):
                     channel.basic_ack(delivery_tag=method.delivery_tag)
                 return
             else:
-                worker_id_alive_list = self.sync_manager.get_workers_id()
+                self.debug('Message {} is not done yet'.format(message_amqp))
                 worker_id = self.message_storage.get_worker_id_by_message(message_amqp)
-                if worker_id in worker_id_alive_list:
+                self.debug("Got worker %s", worker_id)
+
+                if worker_id is not None and AmqpWorker.is_worker_alive(worker_id):
+                    self.debug("Worker {} is alive".format(worker_id))
                     # Todo: Rabbit don't allow get custom or another message.
                     # Todo: Exclude the receipt of this message for this channel
                     self.consumer_storage.consumer_release()
@@ -205,6 +209,8 @@ class AmqpWorker(Process):
                         self.debug('No acknowledge delivery_tag: %s', method.delivery_tag)
                         channel.basic_nack(delivery_tag=method.delivery_tag)
                     return
+                else:
+                    self.debug("Worker {} is dead".format(worker_id))
 
         # Сохраняем информацию о заявке в локальное хранилище
         self.message_storage.message_save(message_amqp, body, properties)
