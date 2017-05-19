@@ -23,7 +23,6 @@ import setproctitle
 
 
 class AmqpWorker(Process):
-
     WORKING_YES = True  # Воркер занимается выполнением задачи
     WORKING_NOT = False  # Воркер не выполняет задач
 
@@ -150,8 +149,36 @@ class AmqpWorker(Process):
                                             self.inactivity_timeout)
             self.amqp_listener.start()
         except Exception as e:
-            self.error('Exception: %s\n'
-                       '  %s\n', e, traceback.format_exc())
+            self.debug('Error amqp_listener.start() with params: \n'
+                       'host: %s\n'
+                       'user: %s\n'
+                       'password: %s\n'
+                       'virtual_host: %s\n'
+                       'queue: %s\n'
+                       'port: %s\n'
+                       'durable: %s\n'
+                       'auto_delete: %s\n'
+                       'no_ack: %s\n'
+                       'prefetch_count: %s\n'
+                       'inactivity_timeout: %s\n'
+                       'Consumer storage: \n'
+                       'redis_host: %s\n'
+                       'redis_port: %s\n',
+                       self.host,
+                       self.user,
+                       self.password,
+                       self.virtual_host,
+                       self.queue,
+                       self.port,
+                       self.durable,
+                       self.auto_delete,
+                       self.no_ack,
+                       self.prefetch_count,
+                       self.inactivity_timeout,
+                       self.redis_host,
+                       self.redis_port,
+                       )
+            self.error('Exception: %s\n  %s\n', e, traceback.format_exc())
 
         self.debug('Correct exit from multiprocessing')
 
@@ -347,7 +374,7 @@ class AmqpWorker(Process):
         if self.program_status is self.STATUS_STOP:
             self.stop()
 
-        if not self.is_main_process_alive():
+        if not AmqpWorker.is_main_process_alive():
             self.handler_error_main_process()
 
         if not self.is_sync_manager_alive():
@@ -355,7 +382,8 @@ class AmqpWorker(Process):
 
         return True
 
-    def is_main_process_alive(self):
+    @staticmethod
+    def is_main_process_alive():
         """
         Жив ли основной процесс
         """
@@ -378,7 +406,7 @@ class AmqpWorker(Process):
         Обработчик ситуации, когда SyncManager мертв
         """
         self.critical('SyncManager is dead, but i\'m alive. Program quit')
-        if self.is_main_process_alive():
+        if AmqpWorker.is_main_process_alive():
             os.kill(os.getppid(), signal.SIGHUP)
         self.stop()
 
@@ -389,8 +417,10 @@ class AmqpWorker(Process):
         self.critical('Main process is dead, but i\'m alive. Program quit')
         try:
             self.sync_manager.stop()
-        except:
+        except Exception as e:
+            self.debug('Main process is dead, sync_manager.stop() exception: %s\n  %s\n', e, traceback.format_exc())
             pass
+
         self.stop()
 
     def stop(self):
