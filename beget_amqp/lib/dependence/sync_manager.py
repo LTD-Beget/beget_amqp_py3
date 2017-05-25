@@ -75,7 +75,8 @@ class SyncManager(object):
         self.logger.critical('SyncManager: (dead worker?) release all dependence by worker id: %s', worker_id)
         self.dependence_storage.dependence_release_all_by_worker_id(worker_id)
 
-    def check_status(self):
+    @staticmethod
+    def check_status():
         """Заглушка для проверки связи"""
         return True
 

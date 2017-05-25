@@ -105,14 +105,17 @@ class Service(object):
         self._status = self.STATUS_STOP
         self._worker_container = []
         self._worker_id_list_in_killed_process = []
+
         """:type : list[AmqpWorker]"""
         self._last_worker_id = 0
 
         self.communicator = CommunicateRedis(self.queue, redis_host=self.redis_host, redis_port=self.redis_port)
+
         self.sync_manager = SyncManager.get_manager(
             amqp_vhost=self.virtual_host, amqp_queue=self.queue,
             redis_host=self.redis_host, redis_port=self.redis_port
         )
+
         self.sender = Sender(user, password, host, port, virtual_host)
 
         self.max_la = max_la
@@ -124,7 +127,8 @@ class Service(object):
         signal.signal(signal.SIGTERM, self.sig_handler)
         signal.signal(signal.SIGHUP, self.sig_handler)
 
-    def generate_uuid(self):
+    @staticmethod
+    def generate_uuid():
         # avoid circular imports
         from . import generate_uuid
         return generate_uuid()
@@ -192,6 +196,7 @@ class Service(object):
         for worker in self._worker_container:
             if worker.is_alive():
                 continue
+
             self.sync_manager.release_all_dependence_by_worker_id(worker.uid)
             self.sync_manager.remove_worker_id(worker.uid)
             if worker.uid in self._worker_id_list_in_killed_process:
@@ -336,7 +341,8 @@ class Service(object):
             self.debug('when answered to question: Exception: %s\n  %s', e, traceback.format_exc())
             return 'Error in method'
 
-    def action_ping(self):
+    @staticmethod
+    def action_ping():
         return 'pong'
 
     def action_get_current_status(self):

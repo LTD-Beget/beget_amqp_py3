@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import pika
+import traceback
+
 from pika.exceptions import ChannelClosed
 
 from .helpers.logger import Logger
@@ -64,9 +66,10 @@ class AmqpListen:
                           '  VH: %s\n'
                           '  queue: %s\n'
                           '  prefetch_count: %s\n'
+                          '  inactivity_timeout: %s\n'
                           '  user: %s\n'
                           '  pass: %s', self.host, self.port, self.virtual_host, self.queue, self.prefetch_count,
-                          self.user, self.password)
+                          self.inactivity_timeout, self.user, self.password)
 
         credentials = pika.PlainCredentials(self.user, self.password)
         connect_params = pika.ConnectionParameters(self.host, self.port, self.virtual_host, credentials)
@@ -98,6 +101,9 @@ class AmqpListen:
                     break
         except TypeError:
             self.logger.debug("AmqpListen: inactivity timeout")
+        except Exception as exc:
+            self.logger.error('AmqpListen start() fatal exception: %s\n  %s', exc, traceback.format_exc())
+            raise exc
 
     def stop(self):
         """

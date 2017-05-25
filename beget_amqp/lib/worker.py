@@ -178,9 +178,9 @@ class AmqpWorker(Process):
                        self.redis_host,
                        self.redis_port,
                        )
-            self.error('Exception: %s\n  %s\n', e, traceback.format_exc())
+            self.error('Exception in worker %s:\n %s\n  %s\n', self.uid, e, traceback.format_exc())
 
-        self.debug('Correct exit from multiprocessing')
+        self.debug('Correct exit from multiprocessing worker: %s' % self.uid)
 
     @uid_logger_wrapper_method
     def _on_message(self, channel, method, properties, body):
@@ -227,6 +227,7 @@ class AmqpWorker(Process):
 
                 if worker_id is not None and AmqpWorker.is_worker_alive(worker_id):
                     self.debug("Worker {} is alive".format(worker_id))
+
                     # Todo: Rabbit don't allow get custom or another message.
                     # Todo: Exclude the receipt of this message for this channel
                     self.consumer_storage.consumer_release()

@@ -29,4 +29,4 @@ def get_lockfile(name):
 
 
 def generate_uuid():
-    return str(uuid.uuid4())
+    return str(uuid.uuid1())

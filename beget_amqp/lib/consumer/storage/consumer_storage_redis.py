@@ -58,9 +58,8 @@ class ConsumerStorageRedis(StorageRedis):
                 self.redis.set(key, self.worker_id)
                 is_allowed = True
                 self.debug(
-                    'allow-consumer: current consumer is dead (was {}), allow current worker to become consumer'.format(
-                        self.worker_id
-                    )
+                    'allow-consumer: current consumer is dead (was {}), '
+                    'allow current worker {} to become consumer'.format(worker_id, self.worker_id)
                 )
 
         self.lock.release()
