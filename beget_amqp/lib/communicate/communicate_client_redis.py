@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .comunicate import Communicate
+from .communicate import Communicate
 import uuid
 import time
 import json

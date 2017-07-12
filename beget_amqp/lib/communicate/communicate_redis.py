@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import uuid
 import json
-from .comunicate import Communicate
+from .communicate import Communicate
 
 
 class CommunicateRedis(Communicate):

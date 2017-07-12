@@ -10,7 +10,7 @@ from .lib.helpers.logger import Logger
 from .lib.worker import AmqpWorker
 from .lib.dependence.sync_manager import SyncManager
 from .Sender import Sender
-from .lib.communicate.comunicate_redis import CommunicateRedis
+from .lib.communicate.communicate_redis import CommunicateRedis
 from ._version import __version__ as version
 
 
@@ -41,7 +41,8 @@ class Service(object):
                  max_la=0,
                  inactivity_timeout=60,
                  redis_host='localhost',
-                 redis_port=6379):
+                 redis_port=6379,
+                 use_sync_manager=False):
         """
         :param host:  может принимать как адрес, так и hostname, так и '' для прослушки всех интерфейсов.
         :param user:
@@ -109,12 +110,14 @@ class Service(object):
         """:type : list[AmqpWorker]"""
         self._last_worker_id = 0
 
-        self.communicator = CommunicateRedis(self.queue, redis_host=self.redis_host, redis_port=self.redis_port)
+        if use_sync_manager:
+            self.sync_manager_server = SyncManager.get_manager_server()
+            self.sync_manager = self.sync_manager_server.SyncManager(
+                amqp_vhost=self.virtual_host, amqp_queue=self.queue)
+        else:
+            self.sync_manager = None
 
-        self.sync_manager = SyncManager.get_manager(
-            amqp_vhost=self.virtual_host, amqp_queue=self.queue,
-            redis_host=self.redis_host, redis_port=self.redis_port
-        )
+        self.communicator = CommunicateRedis(self.queue, redis_host=self.redis_host, redis_port=self.redis_port)
 
         self.sender = Sender(user, password, host, port, virtual_host)
 
@@ -145,7 +148,11 @@ class Service(object):
         # Основной бесконечный цикл. Выход через сигналы или Exception
         while self._status == self.STATUS_START:
 
-            message_nack_list = self.sync_manager.get_unacknowledged_message_id_list()
+            message_nack_list = []
+
+            if self.sync_manager is not None:
+                message_nack_list = self.sync_manager.get_unacknowledged_message_id_list()
+
             worker_required_number = self.number_workers + len(message_nack_list)
 
             # Если воркеров меньше чем положено, создаем новых.
@@ -172,8 +179,11 @@ class Service(object):
                                     redis_host=self.redis_host,
                                     redis_port=self.redis_port)
                 worker.start()
+
                 self._worker_container.append(worker)
-                self.sync_manager.add_worker_id(worker.uid)
+
+                if self.sync_manager is not None:
+                    self.sync_manager.add_worker_id(worker.uid)
 
             if worker_required_number < self.get_workers_alive_count():
                 self.debug('current count workers: %s but maximum: %s',
@@ -187,23 +197,30 @@ class Service(object):
             self.communicate()
 
             # Снижение скорости проверки воркеров
-            time.sleep(1)
+            time.sleep(0.5)
 
     def _delete_dead_workers(self):
         """
         Удаление мертвых воркеров.
         """
-        for worker in self._worker_container:
-            if worker.is_alive():
-                continue
+        dead_workers = [worker for worker in self._worker_container if not worker.is_alive()]
 
-            self.sync_manager.release_all_dependence_by_worker_id(worker.uid)
-            self.sync_manager.remove_worker_id(worker.uid)
+        for worker in dead_workers:
+            worker.join()
+
+            if self.sync_manager is not None:
+                self.sync_manager.release_all_dependence_by_worker_id(worker.uid)
+                self.sync_manager.remove_worker_id(worker.uid)
+            else:
+                worker.release_all_dependencies()
+
             if worker.uid in self._worker_id_list_in_killed_process:
                 self._worker_id_list_in_killed_process.remove(worker.uid)
+
             self._worker_container.remove(worker)
-            self._delete_dead_workers()
-            break
+
+            AmqpWorker.remove_worker_lockfile(worker.uid)
+
 
     def sig_handler(self, sig_num, frame):
         """
@@ -246,19 +263,22 @@ class Service(object):
         """
         self.critical('stop immediately')
 
-        try:
-            # Убиваем воркеров
-            for worker in self._worker_container:
-                is_alive = False
-                try:
-                    is_alive = worker.is_alive()
-                except AssertionError:
-                    os.kill(worker.pid, signal.SIGTERM)
+        # Убиваем воркеров
+        for worker in self._worker_container:
+            try:
+                self.debug('killing worker %s with SIGKILL', worker)
+                if not worker.is_alive():
+                    worker.join()
+                    AmqpWorker.remove_worker_lockfile(worker.uid)
+                    continue
+                os.kill(worker.ident, signal.SIGKILL)
+            except Exception as e:
+                self.debug('when terminate worker: Exception: %s\n  %s', e, traceback.format_exc())
 
-                if is_alive:
-                    worker.terminate()
-        except Exception as e:
-            self.debug('when terminate worker: Exception: %s\n  %s', e, traceback.format_exc())
+        if self.sync_manager is not None:
+            self.debug('stopping sync manager')
+            self.sync_manager_server.shutdown()
+
         # Выходим
         sys.exit(1)
 
@@ -270,25 +290,38 @@ class Service(object):
 
         # Посылаем всем воркерам сигнал плавного завершения
         for worker in self._worker_container:
+            self.debug('killing worker %s with SIGTERM', worker)
             try:
                 if not worker.is_alive():
+                    worker.join()
+                    AmqpWorker.remove_worker_lockfile(worker.uid)
                     continue
-                os.kill(worker.pid, signal.SIGHUP)
+                worker.terminate()
             except Exception as e:
                 self.debug('when send signal to worker: Exception: %s\n  %s', e, traceback.format_exc())
 
         # Ждем пока все воркеры остановятся
-        for worker in self._worker_container:
+        self.debug('wait for workers to die gracefully')
+        while len(self._worker_container) > 0:
+            worker = self._worker_container.pop()
             try:
-                if not worker.is_alive():
+                if worker.is_alive():
+                    self._worker_container.append(worker)
+                    self.debug("worker %s is alive - waiting for it", worker)
+                    worker.join(timeout=1)
                     continue
-                self.debug('wait when %s is die' % repr(worker))
-                worker.join()
             except Exception as e:
-                self.debug('when wait worker: Exception: %s\n  %s', e, traceback.format_exc())
+                self.debug('when wait worker %s: Exception: %s\n  %s', worker, e, traceback.format_exc())
+                continue
 
         # Выходим
         self._status = self.STATUS_STOP
+
+        if self.sync_manager is not None:
+            self.debug('stopping sync manager')
+            self.sync_manager_server.shutdown()
+
+        self.debug('bye-bye')
 
     def get_workers_alive_count(self):
         workers_alive_count = len(self._worker_container) - len(self._worker_id_list_in_killed_process)
@@ -298,15 +331,22 @@ class Service(object):
         for worker in self._worker_container:
             try:
                 if not worker.is_alive():
+                    worker.join()
+                    AmqpWorker.remove_worker_lockfile(worker.uid)
                     continue
+
                 if worker.uid in self._worker_id_list_in_killed_process:
                     continue
-                os.kill(worker.pid, signal.SIGHUP)
+
+                worker.terminate()
+
                 self._worker_id_list_in_killed_process.append(worker.uid)
+
                 return True
 
             except Exception as e:
                 self.debug('when send signal to worker: Exception: %s\n  %s', e, traceback.format_exc())
+
         return False
 
     def add_transport(self, transport, transport_name):
@@ -353,7 +393,7 @@ class Service(object):
         """
         return {
             'worker_number': self.get_workers_alive_count(),
-            'message_list': self.sync_manager.get_message_on_work()
+            'message_list': [] if self.sync_manager is None else self.sync_manager.get_message_on_work()
         }
 
     def action_shutdown(self):
