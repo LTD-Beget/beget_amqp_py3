@@ -5,17 +5,15 @@ services:
       build: .
       volumes:
         - .:/usr/src
-      volumes_from:
-        - redis
       command: bash -c 'python setup.py develop && exec sleep infinity'
+      depends_on:
+        - redis
+        - rabbitmq
 
     redis:
       image: redis:3
-      user: root
       volumes:
-        - /var/run/redis
-        - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
-      command: bash -c 'redis-server /usr/local/etc/redis/redis.conf'
+        - redis:/data
 
     rabbitmq:
       image: rabbitmq:3
@@ -26,4 +24,5 @@ services:
 
 volumes:
   rabbitmq: {}
+  redis: {}
 

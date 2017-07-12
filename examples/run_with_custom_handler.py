@@ -23,5 +23,6 @@ if __name__ == "__main__":
                                      conf.AMQP_PASS,
                                      conf.AMQP_VHOST,
                                      conf.AMQP_QUEUE,
-                                     handler=MyHandler)
+                                     handler=MyHandler,
+                                     redis_host=conf.REDIS_HOST)
     AmqpManager.start()

@@ -38,7 +38,8 @@ AmqpManager = beget_amqp.Service(
     conf.AMQP_QUEUE,
     controllers_prefix=amqpControllerPrefix,
     number_workers=number_workers,
-    logger_name=logger_name
+    logger_name=logger_name,
+    redis_host=conf.REDIS_HOST
 )
 
 AmqpManager.start()
