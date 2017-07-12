@@ -40,6 +40,7 @@ def get_body(sleep_time, name):
 
 def get_property(dependence):
     return {
+        'delivery_mode': 2,
         'headers': {
             'dependence': dependence
         }
