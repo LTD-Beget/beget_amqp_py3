@@ -33,80 +33,16 @@ class RedisConnector:
         self.r = connection.get()
         self.timeout = redis_timeout
 
+    def __getattr__(self, item):
+        return getattr(self.r, item)
+
     def set(self, key, value):
         try:
-            status = self.setex(key, value, self.timeout)
+            status = self.setex(key, self.timeout, value)
             return status
 
         except Exception as e:
-            msg = "Unable to connect to redis. " + str(e)
-            raise Exception(msg)
-
-    def hset(self, name, key, value):
-        try:
-            status = self.r.hset(name, key, value)
-            return status
-
-        except Exception as e:
-            msg = "Unable to connect to redis. " + str(e)
-            raise Exception(msg)
-
-    def hdel(self, name, *keys):
-        try:
-            status = self.r.hdel(name, keys)
-            return status
-
-        except Exception as e:
-            msg = "Unable to connect to redis. " + str(e)
-            raise Exception(msg)
-
-    def hkeys(self, name):
-        try:
-            status = self.r.hkeys(name)
-            return status
-
-        except Exception as e:
-            msg = "Unable to connect to redis. " + str(e)
-            raise Exception(msg)
-
-    def keys(self, name):
-        try:
-            status = self.r.keys(name)
-            return status
-
-        except Exception as e:
-            msg = "Unable to connect to redis. " + str(e)
-            raise Exception(msg)
-
-    def setex(self, key, value, time):
-        try:
-            status = self.r.setex(key, time, value)
-            return status
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
-            raise Exception(msg)
-
-    def lpush(self, key, *values):
-        try:
-            status = self.r.lpush(key, values)
-            return status
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
-            raise Exception(msg)
-
-    def pipeline(self):
-        try:
-            pipe = self.r.pipeline()
-            return pipe
-        except Exception as e:
-            raise Exception("Unable to connect to redis." + str(e))
-
-    def incr(self, key, amount=1):
-        try:
-            status = self.r.incr(key, amount)
-            return status
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
+            msg = "RedisException: " + str(e)
             raise Exception(msg)
 
     def set_list(self, key, list_value):
@@ -115,25 +51,16 @@ class RedisConnector:
             status = self.r.set(key, value)
             return status
         except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
+            msg = "RedisException: " + str(e)
             raise Exception(msg)
 
     def get_list(self, key):
         try:
-            status = json.loads(self.r.get(key))
+            status = json.loads(self.r.get(key).decode('UTF-8'))
             return status
 
         except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
-            raise Exception(msg)
-
-    def exists(self, key):
-        try:
-            status = self.r.exists(key)
-            return status
-
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
+            msg = "RedisException: " + str(e)
             raise Exception(msg)
 
     def expire(self, key, seconds=-1):
@@ -141,7 +68,7 @@ class RedisConnector:
             status = self.r.expire(key, seconds)
             return status
         except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
+            msg = "RedisException: " + str(e)
             raise Exception(msg)
 
     def delete(self, key):
@@ -153,21 +80,5 @@ class RedisConnector:
             return status
 
         except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
-            raise Exception(msg)
-
-    def get(self, key):
-        try:
-            status = self.r.get(key)
-            return status
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
-            raise Exception(msg)
-
-    def hget(self, name, key):
-        try:
-            status = self.r.hget(name, key)
-            return status
-        except Exception as e:
-            msg = "Unable to connect to redis." + str(e)
+            msg = "RedisException: " + str(e)
             raise Exception(msg)
