@@ -62,7 +62,7 @@ class DependenceStorageRedis(StorageRedis):
             dependence_list = self.redis.lrange(key, 0, -1)
 
             for dependence_json in dependence_list:
-                dependence = json.loads(dependence_json)
+                dependence = json.loads(dependence_json.decode('UTF-8'))
                 if message.id == dependence['message_id']:
                     self.redis.lrem(key, 0, dependence_json)
 
@@ -85,7 +85,7 @@ class DependenceStorageRedis(StorageRedis):
             dependence_list = self.redis.lrange(key, 0, -1)
 
             for dependence_json in dependence_list:
-                dependence = json.loads(dependence_json)
+                dependence = json.loads(dependence_json.decode('UTF-8'))
                 if worker_id == dependence['worker_id']:
                     self.redis.lrem(key, 0, dependence_json)
 
@@ -133,7 +133,7 @@ class DependenceStorageRedis(StorageRedis):
             self.debug('wait-dependence: start dependence_list={}'.format(dependence_list))
 
             for dependence_json in dependence_list:
-                dependence = json.loads(dependence_json)
+                dependence = json.loads(dependence_json.decode('UTF-8'))
                 if not AmqpWorker.is_worker_alive(dependence['worker_id']):
                     self.redis.lrem(key, 0, dependence_json)
 
@@ -141,7 +141,7 @@ class DependenceStorageRedis(StorageRedis):
             self.debug('wait-dependence: end dependence_list={}'.format(dependence_list))
 
             for dependence_json in dependence_list:
-                dependence = json.loads(dependence_json)
+                dependence = json.loads(dependence_json.decode('UTF-8'))
                 self.debug('wait-dependence: current dependence={}'.format(dependence))
                 if message.id != dependence['message_id']:
                     available_status[dependence_name] = False

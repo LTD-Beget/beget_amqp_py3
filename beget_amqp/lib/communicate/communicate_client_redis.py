@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .comunicate import Communicate
+from .communicate import Communicate
 import uuid
 import time
 import json
@@ -55,7 +55,7 @@ class CommunicateClient(Communicate):
                 answer = self.redis.hget(self.PREFIX_ANSWER + uuid_question, service)
                 if answer:
                     try:
-                        result[service] = json.loads(answer)
+                        result[service] = json.loads(answer.decode('UTF-8'))
                     except ValueError:
                         result[service] = answer
 

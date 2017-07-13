@@ -24,7 +24,8 @@ AmqpManager = beget_amqp.Service(conf.AMQP_HOST,
                                  conf.AMQP_QUEUE,
                                  controllers_prefix=amqpControllerPrefix,
                                  number_workers=1,
-                                 prefetch_count=1)
+                                 prefetch_count=1,
+                                 redis_host=conf.REDIS_HOST)
 
 # Пример транспорта от beget_amqp с иным подключением.
 transport = beget_amqp.get_transport(conf.AMQP_USER, conf.AMQP_PASS, conf.AMQP_HOST, int(conf.AMQP_PORT))

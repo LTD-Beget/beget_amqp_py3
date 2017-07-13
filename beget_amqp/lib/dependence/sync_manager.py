@@ -25,7 +25,8 @@ from ..helpers.logger import Logger
 #               message_id: '123324345'
 #               worker_id: '3242323423432423'
 #
-
+class SyncManagerServer(BaseManager):
+    SyncManager = None
 
 class SyncManager(object):
 
@@ -86,6 +87,22 @@ class SyncManager(object):
         os.kill(os.getpid(), 9)
 
     @staticmethod
+    def get_manager_server():
+        """
+        :return: Сервер менеджера передаваемый в multiprocessing воркеры
+                 и предоставляющий общие ресурсы для всех воркеров
+        :rtype: SyncManagerServer
+        """
+
+        SyncManagerServer.register('SyncManager', SyncManager)
+
+        sync_manager_server = SyncManagerServer()
+        sync_manager_server.start()
+
+        return sync_manager_server
+
+
+    @staticmethod
     def get_manager(amqp_vhost, amqp_queue, redis_host, redis_port):
         """
         :return: Объект менеджера передаваемый в multiprocessing воркеры
@@ -93,13 +110,8 @@ class SyncManager(object):
         :rtype: SyncManager
         """
 
-        class CreatorSharedManager(BaseManager):
-            SyncManager = None
-
-        CreatorSharedManager.register('SyncManager', SyncManager)
-        creator_shared_manager = CreatorSharedManager()
-        creator_shared_manager.start()
-        return creator_shared_manager.SyncManager(amqp_vhost, amqp_queue,
+        sync_manager_server = SyncManager.get_manager_server()
+        return sync_manager_server.SyncManager(amqp_vhost, amqp_queue,
                                                   redis_host, redis_port)  # ignore this warning of your IDE
 
     def get_workers_id(self):

@@ -34,7 +34,8 @@ AmqpManager = beget_amqp.Service(conf.AMQP_HOST,
                                  controllers_prefix=amqpControllerPrefix,
                                  number_workers=10,
                                  logger_name='custom_name',
-                                 prefetch_count=1)
+                                 prefetch_count=1,
+                                 redis_host=conf.REDIS_HOST)
 
 transport = beget_amqp.get_transport(conf.AMQP_USER, conf.AMQP_PASS, conf.AMQP_HOST, int(conf.AMQP_PORT))
 AmqpManager.add_transport(transport, 'amqp_test')

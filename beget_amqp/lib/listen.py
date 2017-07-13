@@ -3,7 +3,7 @@
 import pika
 import traceback
 
-from pika.exceptions import ChannelClosed
+from pika.exceptions import ChannelClosed, ConnectionClosed
 
 from .helpers.logger import Logger
 
@@ -66,44 +66,66 @@ class AmqpListen:
                           '  VH: %s\n'
                           '  queue: %s\n'
                           '  prefetch_count: %s\n'
-                          '  inactivity_timeout: %s\n'
                           '  user: %s\n'
                           '  pass: %s', self.host, self.port, self.virtual_host, self.queue, self.prefetch_count,
-                          self.inactivity_timeout, self.user, self.password)
+                          self.user, self.password)
 
         credentials = pika.PlainCredentials(self.user, self.password)
         connect_params = pika.ConnectionParameters(self.host, self.port, self.virtual_host, credentials)
 
         try:
             self.connection = pika.BlockingConnection(connect_params)
+        except ConnectionClosed:
+            self.logger.debug("AmqpListen: unable to connect to rabbit, aborting")
+            return
+
+        self.channel = self.connection.channel()
+        """:type : BlockingChannel"""
+
+        try:
+            self.channel.queue_declare(queue=self.queue, passive=True)
+        except ChannelClosed:
+            self.logger.debug('AmqpListen: queue is not created, creating it')
             self.channel = self.connection.channel()
             """:type : BlockingChannel"""
+            self.channel.queue_declare(queue=self.queue, durable=self.durable, auto_delete=self.auto_delete)
+
+        self.channel.basic_qos(prefetch_count=1)
+
+        while self.work_status == self.WORK_RUNNING:
+            try:
+                self.connection.sleep(0.1)
+            except ConnectionClosed:
+                self.logger.debug("AmqpListen: connection is closed, aborting")
+                self.work_status = self.WORK_STOPPING
+                continue
+            except IOError:
+                self.logger.debug('AmqpListen: syscall interrupt?')
+                continue
+
+            if not self.consumer_storage.consumer_is_allowed():
+                continue
 
             try:
-                self.channel.queue_declare(queue=self.queue, passive=True)
-            except pika.exceptions.ChannelClosed:
-                self.logger.debug('AmqpListen: queue is not create. Process to create her.')
-                self.channel = self.connection.channel()
-                """:type : BlockingChannel"""
-                self.channel.queue_declare(queue=self.queue, durable=self.durable, auto_delete=self.auto_delete)
+                channel_data = next(self.channel.consume(queue=self.queue, no_ack=self.no_ack), None)
+                self.channel.cancel()
+            except ConnectionClosed:
+                self.logger.debug('AmqpListen: connection is closed, aborting')
+                self.work_status = self.WORK_STOPPING
+                continue
 
-            self.channel.basic_qos(prefetch_count=1)
+            if channel_data is None:
+                self.logger.debug('AmqpListen: nothing to consume, continue')
+                continue
 
-            while self.work_status == self.WORK_RUNNING:
-                self.connection.sleep(0.1)
-                if not self.consumer_storage.consumer_is_allowed():
-                    continue
+            method_frame, properties, body = channel_data
 
-                for method_frame, properties, body in self.channel.consume(queue=self.queue, no_ack=self.no_ack,
-                                                                           inactivity_timeout=self.inactivity_timeout):
-                    self.channel.cancel()
-                    self.callback(self.channel, method_frame, properties, body)
-                    break
-        except TypeError:
-            self.logger.debug("AmqpListen: inactivity timeout")
-        except Exception as exc:
-            self.logger.error('AmqpListen start() fatal exception: %s\n  %s', exc, traceback.format_exc())
-            raise exc
+            try:
+                self.callback(self.channel, method_frame, properties, body)
+            except ConnectionClosed:
+                self.logger.debug('AmqpListen: connection is closed, aborting')
+                self.work_status = self.WORK_STOPPING
+                continue
 
     def stop(self):
         """
