@@ -3,6 +3,8 @@
 import beget_amqp as amqp
 import time
 import os
+import multiprocessing
+import setproctitle
 
 
 class TestController(amqp.Controller):
@@ -27,6 +29,24 @@ class TestController(amqp.Controller):
         for i in range(1, sleep_time):
             time.sleep(1)
             self.logger.debug('%s:tick: %s [%s]' % (my_name, i, sleep_time))
+        self.logger.debug('%s:exit' % my_name)
+
+    def action_zombie(self, sleep_time=10, name=None):
+        my_name = name or os.getpid()
+        self.logger.debug('%s:start: sleep %s' % (my_name, str(sleep_time)))
+
+        def worker(sleep_time):
+            my_name = os.getpid()
+            setproctitle.setproctitle('WORKER:{}'.format(my_name))
+            self.logger.debug('WORKER:%s:start: sleep %s' % (my_name, str(sleep_time)))
+            for i in range(1, sleep_time):
+                time.sleep(1)
+                self.logger.debug('WORKER:%s:tick: %s [%s]' % (my_name, i, sleep_time))
+            self.logger.debug('WORKER:%s:exit' % my_name)
+
+        p = multiprocessing.Process(target=worker, args=(sleep_time,))
+        p.start()
+
         self.logger.debug('%s:exit' % my_name)
 
     #########################

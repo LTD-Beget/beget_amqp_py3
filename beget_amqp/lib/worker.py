@@ -18,8 +18,10 @@ import signal
 import os
 import time
 import traceback
+import threading
 
 import setproctitle
+import psutil
 
 
 class AmqpWorker(Process):
@@ -117,6 +119,26 @@ class AmqpWorker(Process):
         if os.path.exists(lockfile):
             os.unlink(lockfile)
 
+    @staticmethod
+    def wait_for_children():
+        """
+        Wait (in separate thread) for any lost children spawned by controller
+        :return:
+        """
+        current_process = psutil.Process()
+
+        while True:
+            try:
+                for child in current_process.children():
+                    try:
+                        child.wait(0.1)
+                    except psutil.TimeoutExpired:
+                        pass
+            except:
+                pass
+
+            time.sleep(1)
+
     def run(self):
         """
         Начинаем работать в качестве отдельного процесса.
@@ -138,6 +160,10 @@ class AmqpWorker(Process):
 
         # hold mutex until we die
         self.worker_lock.acquire()
+
+        # reap zombies
+        t = threading.Thread(target=AmqpWorker.wait_for_children, name='{}-reaper'.format(self._name), daemon=True)
+        t.start()
 
         # Начинаем слушать AMQP и выполнять задачи полученные из сообщений:
         try:
