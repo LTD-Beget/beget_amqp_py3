@@ -1,0 +1,28 @@
+version: '2'
+
+services:
+    app:
+      build: .
+      volumes:
+        - .:/usr/src
+      command: bash -c 'python setup.py develop && exec sleep infinity'
+      depends_on:
+        - redis
+        - rabbitmq
+
+    redis:
+      image: redis:3
+      volumes:
+        - redis:/data
+
+    rabbitmq:
+      image: rabbitmq:3
+      volumes:
+        - rabbitmq:/var/lib/rabbitmq
+      environment:
+        - "RABBITMQ_DEFAULT_VHOST=example-vhost"
+
+volumes:
+  rabbitmq: {}
+  redis: {}
+

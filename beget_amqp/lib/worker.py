@@ -18,8 +18,10 @@ import signal
 import os
 import time
 import traceback
+import threading
 
 import setproctitle
+import psutil
 
 
 class AmqpWorker(Process):
@@ -111,6 +113,32 @@ class AmqpWorker(Process):
         except filelock.Timeout:
             return True
 
+    @staticmethod
+    def remove_worker_lockfile(worker_id):
+        lockfile = AmqpWorker.get_worker_lockfile(worker_id)
+        if os.path.exists(lockfile):
+            os.unlink(lockfile)
+
+    @staticmethod
+    def wait_for_children():
+        """
+        Wait (in separate thread) for any lost children spawned by controller
+        :return:
+        """
+        current_process = psutil.Process()
+
+        while True:
+            try:
+                for child in current_process.children():
+                    try:
+                        child.wait(0.1)
+                    except psutil.TimeoutExpired:
+                        pass
+            except:
+                pass
+
+            time.sleep(1)
+
     def run(self):
         """
         Начинаем работать в качестве отдельного процесса.
@@ -126,11 +154,16 @@ class AmqpWorker(Process):
         # Назначаем сигналы для выхода
         signal.signal(signal.SIGTERM, self.sig_handler)
         signal.signal(signal.SIGHUP, self.sig_handler)
+        signal.signal(signal.SIGINT, self.sig_handler)
 
         self.debug('Started worker {}'.format(self.uid))
 
         # hold mutex until we die
         self.worker_lock.acquire()
+
+        # reap zombies
+        t = threading.Thread(target=AmqpWorker.wait_for_children, name='{}-reaper'.format(self._name), daemon=True)
+        t.start()
 
         # Начинаем слушать AMQP и выполнять задачи полученные из сообщений:
         try:
@@ -217,7 +250,8 @@ class AmqpWorker(Process):
             self.debug('Message is done: {}'.format(message_amqp))
             if self.message_storage.is_done_message(message_amqp):
                 self.consumer_storage.consumer_release()
-                self.sync_manager.remove_unacknowledged_message_id(message_amqp.id)
+                if self.sync_manager is not None:
+                    self.sync_manager.remove_unacknowledged_message_id(message_amqp.id)
                 if not self.no_ack:
                     self.debug('Acknowledge delivery_tag: %s', method.delivery_tag)
                     channel.basic_ack(delivery_tag=method.delivery_tag)
@@ -233,8 +267,9 @@ class AmqpWorker(Process):
                     # Todo: Rabbit don't allow get custom or another message.
                     # Todo: Exclude the receipt of this message for this channel
                     self.consumer_storage.consumer_release()
-                    self.sync_manager.add_unacknowledged_message_id(message_amqp.id)
-                    time.sleep(10)
+                    if self.sync_manager is not None:
+                        self.sync_manager.add_unacknowledged_message_id(message_amqp.id)
+                    time.sleep(5)
                     if not self.no_ack:
                         self.debug('No acknowledge delivery_tag: %s', method.delivery_tag)
                         channel.basic_nack(delivery_tag=method.delivery_tag)
@@ -244,7 +279,8 @@ class AmqpWorker(Process):
 
         # Сохраняем информацию о заявке в локальное хранилище
         self.message_storage.message_save(message_amqp, body, properties)
-        self.sync_manager.set_message_on_work(message_amqp)
+        if self.sync_manager is not None:
+            self.sync_manager.set_message_on_work(message_amqp)
 
         # Устанавливаем зависимости сообщения
         self.set_dependence(message_amqp)
@@ -257,10 +293,11 @@ class AmqpWorker(Process):
             self.wait_dependence(message_amqp)
             self.debug('Dependence {} is ready to execute callback'.format(message_amqp.dependence))
 
-            self.working_status = self.WORKING_YES
             # Ждем, пока Load Average на сервере будет меньше чем задан в настройках
             if self.max_la > 0:
                 self.wait_load_average()
+
+            self.working_status = self.WORKING_YES
 
             self.message_storage.message_save_start_time(message_amqp)
 
@@ -298,7 +335,8 @@ class AmqpWorker(Process):
             except Exception as e:
                 self.error('Exception while send callback: %s\n  %s\n', e, traceback.format_exc())
 
-        self.sync_manager.set_message_on_work_done(message_amqp)
+        if self.sync_manager is not None:
+            self.sync_manager.set_message_on_work_done(message_amqp)
         self.message_storage.message_set_done(message_amqp)
         self.release_dependence(message_amqp)
         if not self.no_ack:
@@ -322,6 +360,13 @@ class AmqpWorker(Process):
             else:
                 self.debug("Load average fine, current: {0}, limit: {1}, proceeding".format(la, self.max_la))
                 break
+
+    def release_all_dependencies(self):
+        """
+        release all dependencies for given worker
+        :return:
+        """
+        self.dependence_storage.dependence_release_all_by_worker_id(self.uid)
 
     def set_dependence(self, message):
         """
@@ -364,6 +409,8 @@ class AmqpWorker(Process):
         Обработчик сигналов
         """
         self.debug('get signal %s', sig_num)
+        if sig_num is signal.SIGINT:
+            self.debug('ignoring SIGINT')
         if sig_num is signal.SIGHUP or sig_num is signal.SIGTERM:
             self.stop()
 
@@ -400,7 +447,8 @@ class AmqpWorker(Process):
         Жив ли SyncManager
         """
         try:
-            self.sync_manager.check_status()
+            if self.sync_manager is not None:
+                self.sync_manager.check_status()
             return True
         except:
             return False
@@ -420,7 +468,8 @@ class AmqpWorker(Process):
         """
         self.critical('Main process is dead, but i\'m alive. Program quit')
         try:
-            self.sync_manager.stop()
+            if self.sync_manager is not None:
+                self.sync_manager.stop()
         except Exception as e:
             self.debug('Main process is dead, sync_manager.stop() exception: %s\n  %s\n', e, traceback.format_exc())
             pass
@@ -431,10 +480,12 @@ class AmqpWorker(Process):
         """
         Корректное завершение
         """
+        self.amqp_listener.stop()
+
         if self.working_status is self.WORKING_NOT:
             self.debug('immediately exit')
-            os.kill(os.getpid(), 9)  # todo корректный выход
-            # self.amqp_listener.stop()
+            self.remove_worker_lockfile(self.uid)
+            os._exit(0)
         else:
             self.debug('stop when the work will be done')
             self.program_status = self.STATUS_STOP

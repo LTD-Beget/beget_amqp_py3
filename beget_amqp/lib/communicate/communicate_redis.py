@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import uuid
 import json
-from .comunicate import Communicate
+from .communicate import Communicate
 
 
 class CommunicateRedis(Communicate):
@@ -36,8 +36,11 @@ class CommunicateRedis(Communicate):
         self.unregister()
 
     def unregister(self):
-        self.redis.hdel(self.KEY_SERVICE_LIST, self.key)
-        self.redis.delete(self.key)
+        try:
+            self.redis.hdel(self.KEY_SERVICE_LIST, self.key)
+            self.redis.delete(self.key)
+        except Exception as e:
+            self.debug("Failed to unregister: %s", e)
 
     def get_question_list(self):
         question_list = {}

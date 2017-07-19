@@ -28,7 +28,7 @@ sender = Sender(
 def get_body(sleep_time, name):
     msg = {
         'controller': 'test',
-        'action': 'sleep',
+        'action': 'zombie',
         'params': {
             'sleep_time': sleep_time,
             'name': name
@@ -38,21 +38,18 @@ def get_body(sleep_time, name):
     return sender.dict_to_body(msg)
 
 
-def get_property(dependence):
+def get_property():
     return {
         'delivery_mode': 2,
-        'headers': {
-            'dependence': dependence
-        }
     }
 
 
-for i in range(30):
+for i in range(10):
     sender.send_low_level(
         conf.AMQP_QUEUE,
         get_body(
             3,
-            '({0}) RUN [bravo] Message number {0}'.format(i)
+            '({0}) RUN [zombie] Message number {0}'.format(i)
         ),
-        properties=get_property(['bravo'])
+        properties=get_property()
     )
