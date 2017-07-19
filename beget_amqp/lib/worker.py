@@ -210,6 +210,8 @@ class AmqpWorker(Process):
 
         LoggerAdapterRequestId.static_global_request_id = message_amqp.global_request_id
 
+        self.debug('get-message: global_request_id={}'.format(message_amqp.global_request_id))
+
         # Проверяем в локальном хранилище, что это не дублирующая заявка
         if self.message_storage.is_duplicate_message(message_amqp):
             self.debug('Message is done: {}'.format(message_amqp))
@@ -381,6 +383,7 @@ class AmqpWorker(Process):
         if not self.is_sync_manager_alive():
             self.handler_error_sync_manager()
 
+        self.debug('check-allowed-to-live: True')
         return True
 
     @staticmethod

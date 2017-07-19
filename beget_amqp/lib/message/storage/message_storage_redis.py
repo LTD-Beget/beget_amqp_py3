@@ -62,7 +62,7 @@ class MessageStorageRedis(StorageRedis):
         key = self.get_message_key(message_amqp)
         message_status = self.redis.hget(key, self.KEY_DONE)
         result = message_status is not None
-        self.debug('is duplicate message: %s', result)
+        self.debug('is duplicate message (%s): %s', message_amqp.global_request_id, result)
         return result
 
     def is_done_message(self, message_amqp):
