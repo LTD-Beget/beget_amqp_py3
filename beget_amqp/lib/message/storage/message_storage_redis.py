@@ -28,7 +28,9 @@ class MessageStorageRedis(StorageRedis):
         """
 
         if not message_amqp.id:
+            self.debug('saving aborted: message_amqp.id = %s', message_amqp.id)
             return
+
         key = self.get_message_key(message_amqp)
         self.debug('save message: %s, key: %s', message_amqp.id, key)
 
