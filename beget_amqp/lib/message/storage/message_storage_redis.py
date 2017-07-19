@@ -28,7 +28,9 @@ class MessageStorageRedis(StorageRedis):
         """
 
         if not message_amqp.id:
+            self.debug('saving aborted: message_amqp.id = %s', message_amqp.id)
             return
+
         key = self.get_message_key(message_amqp)
         self.debug('save message: %s, key: %s', message_amqp.id, key)
 
@@ -62,7 +64,7 @@ class MessageStorageRedis(StorageRedis):
         key = self.get_message_key(message_amqp)
         message_status = self.redis.hget(key, self.KEY_DONE)
         result = message_status is not None
-        self.debug('is duplicate message: %s', result)
+        self.debug('is duplicate message (%s): %s', message_amqp.global_request_id, result)
         return result
 
     def is_done_message(self, message_amqp):
