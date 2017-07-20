@@ -20,14 +20,17 @@ class ConsumerStorageRedis(StorageRedis):
         self.lock = filelock.FileLock(get_lockfile(self.get_consumer_key()))
 
     def consumer_release(self):
+        key = self.get_consumer_key()
+
+        self.debug('consumer-release: try lock acquire {}'.format(key))
         self.lock.acquire()
 
-        key = self.get_consumer_key()
         worker_id = self.redis.get(key)
 
-        self.debug('clear-consumer: current consumer was {}'.format(worker_id))
+        self.debug('clear-consumer: current consumer was id = {} key = {}'.format(worker_id, key))
         self.redis.set(key, '')
 
+        self.debug('consumer-release: try lock release {}'.format(key))
         self.lock.release()
 
     def consumer_is_allowed(self):
